@@ -157,38 +157,56 @@ export default function GuitarTabApp() {
   };
 
   const detectPitches = async (audioBuffer, sampleRate) => {
-    // Simple pitch detection using autocorrelation
+    // Pitch detection with guitar range validation
     const audioData = audioBuffer.getChannelData(0);
     const notes = [];
 
     const windowSize = 2048;
     const hopSize = 512;
-    const minFreq = 80;
-    const maxFreq = 1200;
+
+    // Guitar frequency range: E2 (82.41 Hz) to E6 (1318.51 Hz)
+    const minFreq = 82;  // E2 - lowest guitar note
+    const maxFreq = 1320; // E6 - high E
+    const guitarMinMidi = 40; // E2
+    const guitarMaxMidi = 88; // E6
 
     for (let i = 0; i < audioData.length - windowSize; i += hopSize) {
       const window = audioData.slice(i, i + windowSize);
 
       const energy = window.reduce((sum, val) => sum + val * val, 0) / window.length;
 
-      if (energy < 0.001) continue;
+      // Higher energy threshold to reduce noise
+      if (energy < 0.005) continue;
 
       const pitch = estimatePitch(window, sampleRate, minFreq, maxFreq);
 
       if (pitch) {
-        const midi = frequencyToMidi(pitch);
-        const time = i / sampleRate;
+        let rawMidi = frequencyToMidi(pitch);
 
-        if (notes.length === 0 ||
-            Math.abs(notes[notes.length - 1].midi - midi) > 0.5 ||
-            time - notes[notes.length - 1].startTime > 0.25) {
-          notes.push({
-            midi: Math.round(midi),
-            frequency: pitch,
-            startTime: time,
-            duration: hopSize / sampleRate,
-            velocity: Math.min(1, energy * 10)
-          });
+        // Octave correction - bring into guitar range
+        let midi = rawMidi;
+        while (midi < guitarMinMidi - 12) midi += 12; // Too low, go up octaves
+        while (midi > guitarMaxMidi + 12) midi -= 12; // Too high, go down octaves
+
+        // Snap to nearest guitar-range octave
+        if (midi < guitarMinMidi) midi += 12;
+        if (midi > guitarMaxMidi) midi -= 12;
+
+        // Final validation - only keep if in guitar range
+        if (midi >= guitarMinMidi && midi <= guitarMaxMidi) {
+          const time = i / sampleRate;
+
+          if (notes.length === 0 ||
+              Math.abs(notes[notes.length - 1].midi - midi) > 0.5 ||
+              time - notes[notes.length - 1].startTime > 0.25) {
+            notes.push({
+              midi: Math.round(midi),
+              frequency: pitch,
+              startTime: time,
+              duration: hopSize / sampleRate,
+              velocity: Math.min(1, energy * 10)
+            });
+          }
         }
       }
     }
@@ -196,9 +214,16 @@ export default function GuitarTabApp() {
     const mergedNotes = mergeNotes(notes);
     console.log(`[TabIt] Detected ${mergedNotes.length} notes (before merge: ${notes.length})`);
     if (mergedNotes.length > 0) {
-      console.log('[TabIt] Sample notes:', mergedNotes.slice(0, 5).map(n =>
+      const sampleNotes = mergedNotes.slice(0, 10).map(n =>
         `MIDI ${n.midi} (${n.frequency.toFixed(1)}Hz) at ${n.startTime.toFixed(2)}s`
-      ));
+      );
+      console.log('[TabIt] First 10 notes:', sampleNotes);
+
+      // Show MIDI range
+      const midiValues = mergedNotes.map(n => n.midi);
+      const minDetected = Math.min(...midiValues);
+      const maxDetected = Math.max(...midiValues);
+      console.log(`[TabIt] MIDI range: ${minDetected} to ${maxDetected} (guitar range: ${guitarMinMidi}-${guitarMaxMidi})`);
     }
 
     return mergedNotes;
@@ -305,7 +330,7 @@ export default function GuitarTabApp() {
         Array(6).fill('-')
       );
 
-      measureNotes.forEach(note => {
+      measureNotes.forEach((note, idx) => {
         const position = Math.floor(((note.startTime - measureStart) / measureDuration) * (beatsPerMeasure * 4));
         const fretInfo = midiToFret(note.midi, selectedTuning, difficulty);
 
@@ -313,8 +338,22 @@ export default function GuitarTabApp() {
           const fretStr = fretInfo.fret < 10 ? fretInfo.fret.toString() : `(${fretInfo.fret})`;
           positions[position][fretInfo.string] = fretStr;
           totalMappedNotes++;
+
+          // Log first few mapped notes for debugging
+          if (measure === 0 && idx < 3) {
+            console.log(`[TabIt] Measure 1, Note ${idx+1}: MIDI ${note.midi} -> String ${fretInfo.string}, Fret ${fretInfo.fret}, Position ${position}`);
+          }
         } else {
           totalUnmappedNotes++;
+
+          // Log why note wasn't mapped
+          if (measure === 0 && idx < 3) {
+            if (!fretInfo) {
+              console.warn(`[TabIt] Measure 1, Note ${idx+1}: MIDI ${note.midi} - NO FRET INFO (out of range)`);
+            } else if (position < 0 || position >= positions.length) {
+              console.warn(`[TabIt] Measure 1, Note ${idx+1}: MIDI ${note.midi} - INVALID POSITION ${position}`);
+            }
+          }
         }
       });
 

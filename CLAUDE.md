@@ -51,15 +51,29 @@ The app implements a complete audio-to-tab pipeline in the browser:
 
 ### Cloudflare Worker (Optional) (`worker/src/index.js`)
 
-Optional backend for downloading audio from URLs. Supports:
-- YouTube, SoundCloud, Spotify, Bandcamp, Deezer, direct audio URLs
-- R2 bucket caching (if `AUDIO_BUCKET` binding configured)
-- CORS-enabled API at `/api/download-audio`
+Optional backend for downloading audio from URLs:
 
-**Environment Variables:**
-- `VITE_WORKER_URL`: Worker endpoint (set in `.env` for frontend)
-- `RAPIDAPI_KEY`: Optional API key for some music platforms
-- `YTDL_SERVICE_URL`: Optional custom YouTube download service
+**Architecture:**
+1. Worker receives download request at `/api/download-audio`
+2. Checks R2 cache (`AUDIO_BUCKET`) for previously downloaded audio
+3. If not cached, downloads using yt-dlp (via Cloudflare Container or external service)
+4. Caches result in R2 for future requests
+5. Returns audio blob to frontend
+
+**Supported Sources:**
+- YouTube, SoundCloud, Spotify, Bandcamp, direct audio URLs
+
+**Download Methods (priority order):**
+1. **Cloudflare Container** (beta): `YTDLP_CONTAINER` binding - runs yt-dlp in container
+2. **External yt-dlp service**: `YTDLP_SERVICE_URL` - calls external API
+3. **Direct download**: For simple audio file URLs
+
+**Configuration:**
+- `VITE_WORKER_URL` (frontend): Worker endpoint URL
+- `AUDIO_BUCKET` (Worker): R2 bucket binding for caching
+- `YTDLP_CONTAINER` (Worker): Cloudflare Container binding (optional, beta)
+- `YTDLP_SERVICE_URL` (Worker): External yt-dlp service URL (optional)
+- `YTDLP_API_KEY` (Worker): API key for external service (optional)
 
 ### Key Files
 
@@ -89,19 +103,39 @@ Max fret positions by difficulty (in `midiToFret`):
 
 ## Deployment
 
-The app auto-deploys to Cloudflare Pages via GitHub Actions (`.github/workflows/deploy.yml`) on pushes to `main`.
+### Automated Deployment
 
-**Manual deployment:**
+The app auto-deploys via GitHub Actions (`.github/workflows/deploy.yml`) on pushes to `main`:
+1. Builds frontend (`npm run build`)
+2. Deploys Worker (`wrangler deploy` in worker/)
+3. Deploys Pages app (dist/ to Cloudflare Pages)
+
+**Required GitHub Secrets:**
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+### Manual Deployment
+
+**Frontend:**
 ```bash
 npm run build
 npm run deploy  # or: wrangler pages deploy dist --project-name tabit
 ```
 
-**Worker deployment (optional):**
+**Worker:**
 ```bash
 cd worker
 wrangler deploy
 ```
+
+**yt-dlp Container:**
+```bash
+cd ytdlp-service
+docker build -t ytdlp-service .
+# Push to Cloudflare Container Registry (beta) or deploy to Cloud Run/Fly.io
+```
+
+See `DEPLOYMENT.md` for detailed deployment instructions.
 
 ## Important Notes
 
