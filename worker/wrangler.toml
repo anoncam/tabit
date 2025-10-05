@@ -1,0 +1,20 @@
+name = "tabit-worker"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+account_id = "6ee22d5ec21f033141d2980b8ab065c2"
+
+[env.production]
+name = "tabit-worker-prod"
+
+[[r2_buckets]]
+bucket_name = "guitar-tab-audio"
+binding = "guitar_tab_audio"
+
+[[kv_namespaces]]
+binding = "TRANSCRIPTIONS"
+id = "61d08e6cd8de481c8b3e610e1d172908"
+
+[[d1_databases]]
+binding = "guitar_tabs_db"
+database_name = "guitar-tabs-db"
+database_id = "ac44275c-d5bd-4d9e-89f1-b9a2107f9a9b"
