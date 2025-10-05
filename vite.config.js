@@ -9,13 +9,9 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor': ['react', 'react-dom'],
-          'tensorflow': ['@tensorflow/tfjs'],
-          'basic-pitch': ['@spotify/basic-pitch']
+          'icons': ['lucide-react']
         }
       }
     }
-  },
-  optimizeDeps: {
-    exclude: ['@tensorflow/tfjs', '@spotify/basic-pitch']
   }
 })
