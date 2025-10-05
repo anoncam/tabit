@@ -1,0 +1,9 @@
+# wrangler-pages.toml
+name = "tabit"
+pages_build_output_dir = "dist"
+
+[env.production]
+name = "tabit"
+
+[env.preview]
+name = "tabit-preview"
